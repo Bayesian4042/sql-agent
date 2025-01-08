@@ -1,2 +1,6 @@
 dummy_data.py
 seed_db.py
+venv
+__pycache__
+app/__pycache__
+.env
