@@ -3,14 +3,16 @@ from pydantic import BaseModel
 import openai
 import os
 from app.db import SessionLocal
-from typing import List
+from typing import Any, List
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import text
+import json
 
 router = APIRouter()
 
 class QueryRequest(BaseModel):
     query: str
+    itineary: Any
 
 class QueryResult(BaseModel):
     sql: str
@@ -18,6 +20,83 @@ class QueryResult(BaseModel):
 
 # Initialize OpenAI
 openai.api_key = os.getenv("OPENAI_API_KEY")
+
+def generate_user_intentions(natural_language_query: str, complete_itinerary: str) -> List[str]:
+    """Router Agent"""
+    prompt = f""" You are a manager agent of travelling company. Your main task is to understand
+    customer query and based on that create intention of the user. You will be provided with complete_itinerary as well to understand the user query.
+
+    For example: If user ask to reduce the number of days in the trip, you should understand that user and create intention in below JSON format:
+     ```
+     {{
+            "intention": "modify_itinerary",
+            "action": "reduce_trip_duration",
+            "parameters": {{
+                "current_duration": 7,
+                "new_duration": 5,
+                "days_removed": ["Day 3: Free Day for Self Exploration", "Day 6: Benoa Water Sports"],
+                "reason": "User wants a shorter trip to fit their schedule."
+            }},
+            "forward_to": "itinerary_agent",
+            "priority": "high",
+            "notes": "Ensure affected activities canceled and the cost is adjusted."
+        }}
+     ```
+    
+    Availabe User intentions are:
+        1. add_free_day: 
+            - Adds a free day to the itinerary for personal leisure or exploration.
+            - user query example: add free day added for self-exploration in Seminyak
+        2. replace_free_day
+            - Removes a free day from the itinerary.
+            - user query example: replace free day with an activity: Nusa Penida Tour.
+        3. remove_free_day
+            - Removes a free day from the itinerary.
+            - user query example: remove free day from the itinerary.
+        3. add_activity
+            - Adds a new activity to the itinerary.
+            - user query example: add a new activity: Snorkeling at Nusa Dua.
+        4. remove_activity
+            - Removes an activity from the itinerary.
+            - user query example: remove activity: Ubud Monkey Forest.
+        5. reorder_activities
+            - Changes the order of activities on a specific day or across days.
+            - user query example: move snorkeling to the first day.
+        6. change_accommodation
+            - Updates the accommodation to a different location or hotel.
+            - user query example: change accommodation to Villa Seminyak Estate & Spa
+        7. upgrade_accommodation
+            - Upgrades the accommodation to a higher category or luxury hotel.
+            - user query example: upgrade hotel to Four Seasons Resort Bali at Sayan
+        8. downgrade_accommodation
+            - Downgrades the accommodation to a more budget-friendly option
+            - user query example: downgrade hotel to The Kayon Resort by Pramana
+        9. approve_final_itinerary
+            - Confirms and approves the final itinerary for the trip.
+    
+    Important Note:
+        - on user query can have multiple intentions.
+    
+    complete_itinerary: [complete_itinerary]
+    """
+    
+    response = openai.chat.completions.create(
+        model='gpt-4o-mini',
+        messages=[{
+            "role": "system",
+            "content": prompt.replace("[complete_itinerary]", complete_itinerary)
+        }, {
+            "role": "user",
+            "content": f"user query: ${natural_language_query}. Return only the list of user intentions in JSON format."
+        }],
+        max_tokens=1000,
+        temperature=0
+    )
+    
+    # Split multiple SQL queries
+    result = response.choices[0].message.content.replace("```", "").replace('json', '')
+    print('result', result)
+    return result
 
 def generate_sql(natural_language_query: str) -> List[str]:
     """Generate SQL from natural language using OpenAI"""
@@ -90,21 +169,10 @@ async def execute_query(query_request: QueryRequest):
     """Execute natural language query using SQL agent"""
     try:
         # Generate SQL queries
-        sql_queries: List[str] = generate_sql(query_request.query)
+        print(query_request.query)
+        result = generate_user_intentions(query_request.query, json.dumps(query_request.itineary))
 
-        if not sql_queries:
-            raise HTTPException(status_code=400, detail="No SQL queries generated.")
-
-        # Execute each query
-        results = []
-        with SessionLocal() as db:
-            for sql_query in sql_queries:
-                if not isinstance(sql_query, str):
-                    raise HTTPException(status_code=400, detail="Invalid SQL query format.")
-                result = execute_sql(sql_query, db)
-                results.append(result)
-
-        return {"queries": results}
+        return result
     
     except HTTPException as e:
         raise e
