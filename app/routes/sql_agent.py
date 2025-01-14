@@ -2,11 +2,15 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import openai
 import os
-from app.db import SessionLocal
-from typing import Any, List
+# from app.db import SessionLocal
+from typing import Any, List, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import text
 import json
+import gradio as gr
+from dotenv import load_dotenv
+
+load_dotenv()
 
 router = APIRouter()
 
@@ -21,29 +25,153 @@ class QueryResult(BaseModel):
 # Initialize OpenAI
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-def generate_user_intentions(natural_language_query: str, complete_itinerary: str) -> List[str]:
+itineary = {
+    "inclusions": {
+        "airfare": "Return Economy",
+        "hotel_stay": "6 Nights in Ubud & Seminyak (****hotel)",
+        "meals": "6 Breakfasts",
+        "transfers": {
+            "airport": "Return private airport transfers",
+            "surface_travel": "By AC vehicle",
+            "intercity": "Private transfer from Ubud to Seminyak"
+        },
+        "tours": [
+            "Kintamani volcano tour",
+            "Tanah Lot and Uluwatu tour",
+            "Benoa water sports"
+        ],
+        "insurance": "Travel Insurance",
+        "taxes": [
+            "GST",
+            "TCS"
+        ]
+    },
+    "itinerary": {
+        "day_1": {
+            "description": "Arrival in Bali",
+            "activities": [
+                "Meet and Greet at the airport",
+                "Transfer to hotel in Ubud",
+                "Day at leisure depending on flight arrival",
+                "Overnight at hotel"
+            ]
+        },
+        "day_2": {
+            "description": "Kintamani Volcano Tour",
+            "activities": [
+                "Buffet breakfast at the hotel",
+                "Kintamani Volcano Tour with Ubud Village (Private Transfer)",
+                "Overnight at hotel"
+            ]
+        },
+        "day_3": {
+            "description": "Free Day for Self Exploration",
+            "activities": [
+                "Buffet breakfast at the hotel",
+                "Day is free for customization",
+                "Holiday Tribe assistance available for planning the day",
+                "Overnight at hotel"
+            ]
+        },
+        "day_4": {
+            "description": "Transfer from Ubud to Seminyak",
+            "activities": [
+                "Buffet breakfast at the hotel",
+                "Private transfer from Ubud hotel to Seminyak hotel",
+                "Overnight at hotel"
+            ]
+        },
+        "day_5": {
+            "description": "Tanah Lot and Uluwatu Tour",
+            "activities": [
+                "Buffet breakfast at the hotel",
+                "Tanah Lot Tour followed by Uluwatu Sunset Tour (Private Transfer)",
+                "Overnight at hotel"
+            ]
+        },
+        "day_6": {
+            "description": "Benoa Water Sports",
+            "activities": [
+                "Buffet breakfast at the hotel",
+                "Benoa Water Sports Tour (Half Day, Private Transfer)",
+                "Overnight at hotel"
+            ]
+        },
+        "day_7": {
+            "description": "Departure",
+            "activities": [
+                "Buffet breakfast at the hotel",
+                "Private departure transfer to Bali airport",
+                "Return flight to India"
+            ]
+        }
+    },
+    "tour_highlights": [
+        "Benoa water sports",
+        "Kintamani Volcano tour",
+        "Tanah Lot & Uluwatu tour"
+    ],
+    "contact_details": {
+        "phone": "+91-9205553343",
+        "email": "contact@holidaytribe.com",
+        "social_media": "@holidaytribeworld"
+    },
+    "exclusions": [
+        "Seat selection and meal costs on low-cost flights",
+        "Visa cost",
+        "Sightseeing not mentioned in the itinerary",
+        "Meals other than mentioned in the itinerary",
+        "Early hotel check-in",
+        "Local taxes (if any)",
+        "Tips and gratuities",
+        "Anything else not mentioned in the itinerary and inclusions",
+        "Shared SIC transfers (vehicle shared with other travelers)",
+        "Point-to-point private transfers (not car at disposal)"
+    ],
+    "hotel_details": [
+        "Ashoka Tree Resort",
+        "d'primahotel Petitenget",
+        "Hula Hula Resort Ao Nang, Krabi (on similar basis)"
+    ]
+}
+
+conversations = {
+}
+
+tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "update_itinerary",
+                "description": "Update the existing itinerary based on user changes",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "itinerary": {
+                            "type": "string",
+                            "description": "The complete itinerary in JSON in str format",
+                        },
+                        "updated_changes": {
+                            "type": "string",
+                            "description": "The updated changes from the user in str format",
+                        }
+                    },
+                    "required": ["itinerary", "updated_changes"],
+                },
+            }
+        }
+    ]
+
+
+def generate_user_intentions(natural_language_query: str, complete_itinerary: str, userId: str) -> List[str]:
     """Router Agent"""
     prompt = f""" You are a manager agent of travelling company. Your main task is to understand
-    customer query and based on that create intention of the user. You will be provided with complete_itinerary as well to understand the user query.
+    customer query and based on that you should reply back to the customer. 
+    You will be provided with complete_itinerary as well to understand the user query.
 
-    For example: If user ask to reduce the number of days in the trip, you should understand that user and create intention in below JSON format:
-     ```
-     {{
-            "intention": "modify_itinerary",
-            "action": "reduce_trip_duration",
-            "parameters": {{
-                "current_duration": 7,
-                "new_duration": 5,
-                "days_removed": ["Day 3: Free Day for Self Exploration", "Day 6: Benoa Water Sports"],
-                "reason": "User wants a shorter trip to fit their schedule."
-            }},
-            "forward_to": "itinerary_agent",
-            "priority": "high",
-            "notes": "Ensure affected activities canceled and the cost is adjusted."
-        }}
-     ```
+    For example: If user ask to reduce the number of days in the trip, you should understand that user wants to shorten the trip duration and then you should gather, how many days customer wants for a trip and so on...
     
-    Availabe User intentions are:
+    User many ask for the following queries:
         1. add_free_day: 
             - Adds a free day to the itinerary for personal leisure or exploration.
             - user query example: add free day added for self-exploration in Seminyak
@@ -75,28 +203,99 @@ def generate_user_intentions(natural_language_query: str, complete_itinerary: st
             - Confirms and approves the final itinerary for the trip.
     
     Important Note:
-        - on user query can have multiple intentions.
+        - You can provide user with brief summary of the itinerary and ask for the changes required.
+        - If user ask to add the activity, ask user which day they want to add the activity or extend the trip.
+        - Use tool update_itinerary only after taking confirmation of changes in the itinerary.
     
     complete_itinerary: [complete_itinerary]
     """
-    
-    response = openai.chat.completions.create(
-        model='gpt-4o-mini',
-        messages=[{
+
+    if userId not in conversations:
+        conversations[userId] = [{
             "role": "system",
             "content": prompt.replace("[complete_itinerary]", complete_itinerary)
-        }, {
-            "role": "user",
-            "content": f"user query: ${natural_language_query}. Return only the list of user intentions in JSON format."
+        }]
+    
+    conversations[userId].append({
+        "role": "user",
+        "content": f"{natural_language_query}."
+    })
+
+    
+    response = openai.chat.completions.create(
+        model='gpt-4o',
+        messages=conversations[userId],
+        max_tokens=1000,
+        temperature=0,
+        tools=tools,
+    )
+    
+    response_message = response.choices[0].message
+    result = response_message.content
+
+    if response_message.tool_calls:
+        for tool_call in response_message.tool_calls:
+            function_name = tool_call.function.name
+            if function_name == "update_itinerary":
+                function_args = json.loads(tool_call.function.arguments)
+                updated_itinerary = update_itinerary(function_args["itinerary"], function_args["updated_changes"])
+                print("Updated Itinerary: ", updated_itinerary)
+                # conversations[userId].append({
+                #     "tool_call_id": tool_call.id,
+                #     "role": "tool",
+                #     "name": function_name,
+                #     "content": updated_itinerary
+                # })
+
+                # get the final response from the model
+                # response = openai.chat.completions.create(
+                #     model='gpt-4o',
+                #     messages=conversations[userId],
+                #     max_tokens=1000,
+                #     temperature=0
+                # )
+
+                conversations[userId].append({
+                    "role": "assistant",
+                    "content": updated_itinerary
+                })
+    else:
+        print("No tool calls found in the response.")
+        conversations[userId].append({
+            "role": "assistant",
+            "content": result
+        })
+
+    # update conversation to this format [{"user": "query"}, {"assistant": "response"}]
+    conversation_history = [(c["role"], c["content"]) if c["role"] == "user" or c["role"] == "assistant" else () for c in conversations[userId]]
+
+    # remove empty objects from the conversation
+    conversation_history = [c for c in conversation_history if c]
+    return conversation_history
+
+def update_itinerary(itinerary: str, updated_response: str) -> str:
+    prompt = f"""You are helpful AI assistant for a travel company. 
+    Your main task is to understand the itinerary and changes that has been done in the itinerary as "updated_response".
+    Update the itinerary based on the user response and provide the updated itinerary to the user.
+
+    original_itinerary: {itinerary}
+    changes_required: {updated_response}
+    
+    updated_itinerary:
+    """
+
+    response = openai.chat.completions.create(
+        model='gpt-4o',
+        messages=[{
+            "role": "system",
+            "content": prompt
         }],
         max_tokens=1000,
         temperature=0
     )
-    
-    # Split multiple SQL queries
-    result = response.choices[0].message.content.replace("```", "").replace('json', '')
-    print('result', result)
-    return result
+
+    return response.choices[0].message.content
+
 
 def generate_sql(natural_language_query: str) -> List[str]:
     """Generate SQL from natural language using OpenAI"""
@@ -143,7 +342,8 @@ def generate_sql(natural_language_query: str) -> List[str]:
             "content": prompt
         }],
         max_tokens=1000,
-        temperature=0
+        temperature=0,
+        response_format={"type": "json"}
     )
     
     # Split multiple SQL queries
@@ -171,10 +371,114 @@ async def execute_query(query_request: QueryRequest):
         # Generate SQL queries
         print(query_request.query)
         result = generate_user_intentions(query_request.query, json.dumps(query_request.itineary))
-
-        return result
+        # assistant_response = prepare_user_response(json.dumps(query_request.itineary), json.dumps(result))
+        return {"assistant_response": assistant_response, "user_intentions": result}
     
     except HTTPException as e:
         raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+def chatbot_interface(user_input, chat_history):
+    # Get the response from the backend function
+    conversation_history = generate_user_intentions(user_input, json.dumps(itineary), "123")
+    print('conversation_history', conversation_history)
+    # Update the chat history
+    chat_history = conversation_history
+    
+    # Return updated chat history
+    return chat_history, chat_history
+
+
+custom_css = """
+.container {
+    max-width: 1200px !important;
+    margin: auto;
+    padding: 20px;
+}
+.chatbot-container {
+    height: 600px !important;
+    overflow-y: auto;
+}
+.message-box {
+    height: 100px !important;
+    font-size: 16px !important;
+}
+"""
+
+with gr.Blocks(css=custom_css) as demo:
+    with gr.Column(elem_classes="container"):
+        # Header
+        gr.Markdown(
+            """
+            # AI Travel Assistant
+            Welcome to your personal travel planning assistant. How can I help you today?
+            """
+        )
+        
+        # Chat interface
+        with gr.Row():
+            with gr.Column(scale=12):
+                chatbot = gr.Chatbot(
+                    label="Conversation",
+                    elem_classes="chatbot-container",
+                    height=500,
+                    show_label=False,
+                )
+                
+                with gr.Row():
+                    # Message input
+                    message = gr.Textbox(
+                        label="Your message",
+                        placeholder="Type your message here...",
+                        elem_classes="message-box",
+                        show_label=False,
+                    )
+                    # Send button
+                    send_button = gr.Button(
+                        "Send",
+                        variant="primary",
+                        size="lg",
+                        scale=0.15,
+                    )
+        
+        # Clear button
+        clear_button = gr.Button("Clear Conversation", size="sm")
+        
+        # Initialize chat history
+        chat_history = gr.State([])
+        
+        # Function to clear chat history
+        def clear_chat() -> Tuple[str, List[Tuple[str, str]]]:
+            return "", []
+        
+        # Event handlers
+        msg_submit = message.submit(
+            chatbot_interface,
+            inputs=[message, chat_history],
+            outputs=[chatbot, chat_history],
+        ).then(
+            lambda: "",  # Clear input box after sending
+            None,
+            message,
+        )
+        
+        send_button.click(
+            chatbot_interface,
+            inputs=[message, chat_history],
+            outputs=[chatbot, chat_history],
+        ).then(
+            lambda: "",  # Clear input box after sending
+            None,
+            message,
+        )
+        
+        clear_button.click(
+            clear_chat,
+            outputs=[message, chatbot],
+            show_progress=False,
+        )
+
+# Launch the app
+if __name__ == "__main__":
+    demo.launch()
