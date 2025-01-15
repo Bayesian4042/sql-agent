@@ -9,6 +9,7 @@ from sqlalchemy.sql import text
 import json
 import gradio as gr
 from dotenv import load_dotenv
+import psycopg2
 
 load_dotenv()
 
@@ -16,113 +17,65 @@ load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 itineary = {
-    "inclusions": {
-        "airfare": "Return Economy",
-        "hotel_stay": "6 Nights in Ubud & Seminyak (****hotel)",
-        "meals": "6 Breakfasts",
-        "transfers": {
-            "airport": "Return private airport transfers",
-            "surface_travel": "By AC vehicle",
-            "intercity": "Private transfer from Ubud to Seminyak"
-        },
-        "tours": [
-            "Kintamani volcano tour",
-            "Tanah Lot and Uluwatu tour",
-            "Benoa water sports"
-        ],
-        "insurance": "Travel Insurance",
-        "taxes": [
-            "GST",
-            "TCS"
-        ]
+  "packageName": "Dubai Standard Package",
+  "rating": 4.8,
+  "duration": "4 Nights & 5 Days",
+  "inclusions": {
+    "airfare": "Return Economy Airfare",
+    "accommodation": "4-star hotel for 4 nights",
+    "meals": "4 breakfasts at the hotel",
+    "transportation": {
+      "airportTransfers": "Return private airport transfers",
+      "cityTour": "Half Day Dubai City Tour with shared transfer",
+      "desertSafari": "Standard Desert Safari with shared transfer (Falcon Camp or Similar)",
+      "burjKhalifa": "At the Top Burj Khalifa (124 & 125 Floors - Non Prime Time) with shared transfer",
+      "creekCruise": "Dubai Creek Cruise with shared transfer"
     },
-    "itinerary": {
-        "day_1": {
-            "description": "Arrival in Bali",
-            "activities": [
-                "Meet and Greet at the airport",
-                "Transfer to hotel in Ubud",
-                "Day at leisure depending on flight arrival",
-                "Overnight at hotel"
-            ]
-        },
-        "day_2": {
-            "description": "Kintamani Volcano Tour",
-            "activities": [
-                "Buffet breakfast at the hotel",
-                "Kintamani Volcano Tour with Ubud Village (Private Transfer)",
-                "Overnight at hotel"
-            ]
-        },
-        "day_3": {
-            "description": "Free Day for Self Exploration",
-            "activities": [
-                "Buffet breakfast at the hotel",
-                "Day is free for customization",
-                "Holiday Tribe assistance available for planning the day",
-                "Overnight at hotel"
-            ]
-        },
-        "day_4": {
-            "description": "Transfer from Ubud to Seminyak",
-            "activities": [
-                "Buffet breakfast at the hotel",
-                "Private transfer from Ubud hotel to Seminyak hotel",
-                "Overnight at hotel"
-            ]
-        },
-        "day_5": {
-            "description": "Tanah Lot and Uluwatu Tour",
-            "activities": [
-                "Buffet breakfast at the hotel",
-                "Tanah Lot Tour followed by Uluwatu Sunset Tour (Private Transfer)",
-                "Overnight at hotel"
-            ]
-        },
-        "day_6": {
-            "description": "Benoa Water Sports",
-            "activities": [
-                "Buffet breakfast at the hotel",
-                "Benoa Water Sports Tour (Half Day, Private Transfer)",
-                "Overnight at hotel"
-            ]
-        },
-        "day_7": {
-            "description": "Departure",
-            "activities": [
-                "Buffet breakfast at the hotel",
-                "Private departure transfer to Bali airport",
-                "Return flight to India"
-            ]
-        }
+    "insurance": "Travel Insurance",
+    "taxes": "GST and TCS"
+  },
+  "itinerary": [
+    {
+      "day": 1,
+      "title": "Arrival in Dubai",
+      "description": "Meet and greet at the airport, transfer to the hotel (standard check-in time is 3 PM). Day at leisure. Overnight at the hotel."
     },
-    "tour_highlights": [
-        "Benoa water sports",
-        "Kintamani Volcano tour",
-        "Tanah Lot & Uluwatu tour"
-    ],
-    "contact_details": {
-        "phone": "+91-9205553343",
-        "email": "contact@holidaytribe.com",
-        "social_media": "@holidaytribeworld"
+    {
+      "day": 2,
+      "title": "Dubai City Tour and Desert Safari",
+      "description": "Buffet breakfast at the hotel. Half-day Dubai City Tour with return shared transfer. Standard Desert Safari with return shared transfer. Overnight at the hotel."
     },
-    "exclusions": [
-        "Seat selection and meal costs on low-cost flights",
-        "Visa cost",
-        "Sightseeing not mentioned in the itinerary",
-        "Meals other than mentioned in the itinerary",
-        "Early hotel check-in",
-        "Local taxes (if any)",
-        "Tips and gratuities",
-        "Anything else not mentioned in the itinerary and inclusions",
-        "Shared SIC transfers (vehicle shared with other travelers)",
-        "Point-to-point private transfers (not car at disposal)"
-    ],
-    "hotel_details": [
-        "Ashoka Tree Resort",
-        "d'primahotel Petitenget",
-        "Hula Hula Resort Ao Nang, Krabi (on similar basis)"
-    ]
+    {
+      "day": 3,
+      "title": "Dubai Creek Cruise and Burj Khalifa",
+      "description": "Buffet breakfast at the hotel. Dubai Creek Cruise with shared transfer. Visit 'At the Top Burj Khalifa' (124 & 125 Floors - Non Prime Time) with return shared transfer. Overnight at the hotel."
+    },
+    {
+      "day": 4,
+      "title": "Free Day for Exploration",
+      "description": "Buffet breakfast at the hotel. The day is free for you to customize as per your interest. Holiday Tribe can assist with planning if needed. Overnight at the hotel."
+    },
+    {
+      "day": 5,
+      "title": "Departure from Dubai",
+      "description": "Buffet breakfast at the hotel. Departure transfer to Dubai airport. Return flight back to India."
+    }
+  ],
+  "exclusions": [
+    "Visa cost",
+    "Seat selection and meals cost on low-cost carriers",
+    "Sightseeing not mentioned in the itinerary",
+    "Meals other than mentioned",
+    "Early check-in at the hotel",
+    "Local taxes (if any)",
+    "Tips and gratuities",
+    "Anything else not mentioned in the inclusions"
+  ],
+  "contactDetails": {
+    "phone": "+91-9205553343",
+    "email": "contact@holidaytribe.com",
+    "social": "@holidaytribeworld"
+  }
 }
 
 conversations = {
@@ -162,23 +115,23 @@ tools = [
                 },
             }
         },
-        {
-            "type": "function",
-            "function": {
-                "name": "replace_free_day",
-                "description": "Replaces an existing free day with a new activity",
-                "parameters": {
-                "type": "object",
-                "properties": {
-                    "activity": {
-                    "type": "string",
-                    "description": "The new activity to replace the free day with"
-                    }
-                },
-                "required": ["activity"]
-                }
-            }   
-        },
+        # {
+        #     "type": "function",
+        #     "function": {
+        #         "name": "replace_free_day",
+        #         "description": "Replaces an existing free day with a new activity",
+        #         "parameters": {
+        #         "type": "object",
+        #         "properties": {
+        #             "activity": {
+        #             "type": "string",
+        #             "description": "The new activity to replace the free day with"
+        #             }
+        #         },
+        #         "required": ["activity"]
+        #         }
+        #     }   
+        # },
         {
             "type": "function",
             "function": {
@@ -195,16 +148,20 @@ tools = [
             "type": "function",
             "function": {
                 "name": "add_activity",
-                "description": "Adds a new activity to the itinerary",
+                "description": "Adds a new activity to the itinerary for the given destination",
                 "parameters": {
                 "type": "object",
                 "properties": {
                     "activity": {
                     "type": "string",
                     "description": "The name or description of the activity to add"
-                    }
+                    },
+                    "destination": {
+                    "type": "string",
+                    "description": "The destination of this trip"
+                    },
                 },
-                "required": ["activity"]
+                "required": ["activity", "destination"]
                 }
             }
         },
@@ -398,9 +355,12 @@ def generate_user_intentions(natural_language_query: str, complete_itinerary: st
                     "content": "calling remove_free_day"
                 })
             elif function_name == "add_activity":
+                print("calling add_activity")
+                function_args = json.loads(tool_call.function.arguments)
+                activities = get_acitivities(function_args["activity"], function_args["destination"])
                 conversations[userId].append({
                     "role": "assistant",
-                    "content": "calling add_activity"
+                    "content": json.dumps(activities)
                 })
             elif function_name == "remove_activity":
                 conversations[userId].append({
@@ -441,6 +401,64 @@ def generate_user_intentions(natural_language_query: str, complete_itinerary: st
     # remove empty objects from the conversation
     conversation_history = [c for c in conversation_history if c]
     return conversation_history
+
+def get_acitivities(acitivity: str, location: str) -> List[str]:
+        conn = psycopg2.connect(os.getenv("DATABASE_URL"))
+        cursor = conn.cursor()
+        cursor = conn.cursor()
+
+        print("location", location)
+        response = openai.embeddings.create(
+            input=[f"{acitivity} in {location}"],
+            model="text-embedding-ada-002"
+         )
+
+        query_embedding = response.data[0].embedding
+        query_vector_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
+
+        # get location id
+        cursor.execute(f"SELECT id FROM destination WHERE name ILIKE '{location}'")
+        row = cursor.fetchone()
+        location_id = row[0]
+
+        print("location_id", location_id)
+
+        threshold = 0.5  # Set your desired threshold
+        sql = """
+            SELECT 
+                id, 
+                name, 
+                description,
+                -(embedding <#> %s::vector) as similarity
+            FROM must_travel_activity 
+            WHERE 
+                destination_id = %s 
+                AND -(embedding <#> %s::vector) > 0.85  -- Cosine similarity threshold
+            ORDER BY similarity DESC
+            LIMIT 5;
+        """
+
+        cursor.execute(sql, (
+            query_vector_str,
+            location_id,
+            query_vector_str
+        ))
+
+        rows = cursor.fetchall()
+        activities = []
+
+        for row in rows:
+            print(row)
+            activity_id = row[0]
+            activity_name = row[1]
+            activity_desc = row[2]
+            distance = row[3]
+            print(f"Activity: {activity_name}, Distance: {distance}")
+            activities.append(activity_name)
+
+        cursor.close()
+        conn.close()
+        return activities
 
 def update_itinerary(itinerary: str, updated_response: str) -> str:
     prompt = f"""You are helpful AI assistant for a travel company. 
