@@ -138,7 +138,7 @@ if __name__ == "__main__":
         embedding_column='embedding',
         label_column='name',  # Optional
         reduction_method='tsne',   # or 'tsne'
-        n_components=3          # or 3 for 3D visualization
+        n_components=2          # or 3 for 3D visualization
     )
     
     # Display the plot
