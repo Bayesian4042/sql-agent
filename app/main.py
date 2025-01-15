@@ -149,7 +149,154 @@ tools = [
                     "required": ["itinerary", "updated_changes"],
                 },
             }
-        }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "add_free_day",
+                "description": "Adds a free day to the itinerary for personal leisure or exploration",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                },
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "replace_free_day",
+                "description": "Replaces an existing free day with a new activity",
+                "parameters": {
+                "type": "object",
+                "properties": {
+                    "activity": {
+                    "type": "string",
+                    "description": "The new activity to replace the free day with"
+                    }
+                },
+                "required": ["activity"]
+                }
+            }   
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "remove_free_day",
+                "description": "Removes a previously scheduled free day from the itinerary",
+                "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "add_activity",
+                "description": "Adds a new activity to the itinerary",
+                "parameters": {
+                "type": "object",
+                "properties": {
+                    "activity": {
+                    "type": "string",
+                    "description": "The name or description of the activity to add"
+                    }
+                },
+                "required": ["activity"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "remove_activity",
+                "description": "Removes an activity from the itinerary",
+                "parameters": {
+                "type": "object",
+                "properties": {
+                    "activity": {
+                    "type": "string",
+                    "description": "The name or description of the activity to remove"
+                    }
+                },
+                "required": ["activity"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "reorder_activities",
+                "description": "Changes the order of activities on a specific day or across days",
+                "parameters": {
+                "type": "object",
+                "properties": {
+                    "activity": {
+                    "type": "string",
+                    "description": "The name or description of the activity to reorder"
+                    },
+                    "day": {
+                    "type": "string",
+                    "description": "The day on which the activity is scheduled"
+                    }
+                },
+                "required": ["activity", "day"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "change_accommodation",
+                "description": "Updates the accommodation to a different location or hotel",
+                "parameters": {
+                "type": "object",
+                "properties": {
+                    "accommodation": {
+                    "type": "string",
+                    "description": "The name or description of the new accommodation"
+                    }
+                },
+                "required": ["accommodation"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "upgrade_accommodation",
+                "description": "Upgrades the accommodation to a higher category or luxury hotel",
+                "parameters": {
+                "type": "object",
+                "properties": {
+                    "category": {
+                    "type": "string",
+                    "description": "The new category or type of accommodation"
+                    }
+                },
+                "required": ["category"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "downgrade_accommodation",
+                "description": "Downgrades the accommodation to a more budget-friendly option",
+                "parameters": {
+                "type": "object",
+                "properties": {
+                    "category": {
+                    "type": "string",
+                    "description": "The new category or type of accommodation"
+                    }
+                },
+                "required": ["category"]
+                }
+            }
+        },
     ]
 
 
@@ -195,7 +342,7 @@ def generate_user_intentions(natural_language_query: str, complete_itinerary: st
     Important Note:
         - You can provide user with brief summary of the itinerary and ask for the changes required.
         - If user ask to add the activity, ask user which day they want to add the activity or extend the trip.
-        - Use tool update_itinerary only after taking confirmation of changes in the itinerary.
+        - Use tools provided to you, only after the confirmation from the user.
     
     complete_itinerary: [complete_itinerary]
     """
@@ -213,7 +360,7 @@ def generate_user_intentions(natural_language_query: str, complete_itinerary: st
 
     
     response = openai.chat.completions.create(
-        model='gpt-4o-mini',
+        model='gpt-4o',
         messages=conversations[userId],
         max_tokens=2000,
         temperature=0,
@@ -235,6 +382,52 @@ def generate_user_intentions(natural_language_query: str, complete_itinerary: st
                     "role": "assistant",
                     "content": updated_itinerary
                 })
+            elif function_name == "add_free_day":
+                conversations[userId].append({
+                    "role": "assistant",
+                    "content": "calling add_free_day"
+                })
+            elif function_name == "replace_free_day":
+                conversations[userId].append({
+                    "role": "assistant",
+                    "content": "calling replace_free_day"
+                })
+            elif function_name == "remove_free_day":
+                conversations[userId].append({
+                    "role": "assistant",
+                    "content": "calling remove_free_day"
+                })
+            elif function_name == "add_activity":
+                conversations[userId].append({
+                    "role": "assistant",
+                    "content": "calling add_activity"
+                })
+            elif function_name == "remove_activity":
+                conversations[userId].append({
+                    "role": "assistant",
+                    "content": "calling remove_activity"
+                })
+            elif function_name == "reorder_activities":
+                conversations[userId].append({
+                    "role": "assistant",
+                    "content": "calling reorder_activities"
+                })
+            elif function_name == "change_accommodation":
+                conversations[userId].append({
+                    "role": "assistant",
+                    "content": "calling change_accommodation"
+                })
+            elif function_name == "upgrade_accommodation":
+                conversations[userId].append({
+                    "role": "assistant",
+                    "content": "calling upgrade_accommodation"
+                })
+            elif function_name == "downgrade_accommodation":
+                conversations[userId].append({
+                    "role": "assistant",
+                    "content": "calling downgrade_accommodation"
+                })
+            
     else:
         print("No tool calls found in the response.")
         conversations[userId].append({
